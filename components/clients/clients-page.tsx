@@ -1,0 +1,20 @@
+'use client';
+import { ChevronLeft, ChevronRight, Ellipsis, Plus, Search, SlidersHorizontal } from 'lucide-react';
+import { clients } from '@/data/clients';
+import { money, PersonAvatar, SectionTitle } from '@/components/shared';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useState } from 'react';
+
+export function ClientsPage() {
+  const [query,setQuery]=useState('');
+  const filtered=clients.filter(c=>`${c.name} ${c.company} ${c.email}`.toLowerCase().includes(query.toLowerCase()));
+  return <><SectionTitle title="Clientes" description="Acompanhe sua carteira e mantenha relacionamentos em dia." action={<Button className="rounded-xl bg-[#173f3d] text-white hover:bg-[#0f302f]"><Plus size={16}/> Adicionar cliente</Button>}/>
+    <section className="card-surface overflow-hidden"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5eae8] p-4"><div className="relative"><Search className="absolute left-3 top-2.5 text-[#87928f]" size={16}/><Input value={query} onChange={e=>setQuery(e.target.value)} className="w-[min(72vw,320px)] rounded-xl bg-[#f8faf9] pl-9" placeholder="Pesquisar clientes..."/></div><Button variant="outline" className="rounded-xl"><SlidersHorizontal size={16}/> Todos os status</Button></div>
+      <div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-[#fafbfb]"><TableHead>Cliente</TableHead><TableHead>Empresa</TableHead><TableHead>Email</TableHead><TableHead>Telefone</TableHead><TableHead>Status</TableHead><TableHead>Valor total</TableHead><TableHead>Último contato</TableHead><TableHead>Responsável</TableHead><TableHead/></TableRow></TableHeader><TableBody>{filtered.map(c=><TableRow key={c.id} className="h-[66px]"><TableCell className="font-medium">{c.name}</TableCell><TableCell>{c.company}</TableCell><TableCell className="text-[#63716f]">{c.email}</TableCell><TableCell className="whitespace-nowrap text-[#63716f]">{c.phone}</TableCell><TableCell><Badge variant="outline" className={c.status==='Ativo'?'border-[#c9e3d8] bg-[#eff8f4] text-[#39735e]':c.status==='Em risco'?'border-[#ecd9b8] bg-[#fff7e9] text-[#926525]':'bg-[#f1f3f2] text-[#687471]'}>{c.status}</Badge></TableCell><TableCell className="font-medium">{money(c.totalValue)}</TableCell><TableCell className="whitespace-nowrap text-[#63716f]">{c.lastContact}</TableCell><TableCell><div className="flex items-center gap-2"><PersonAvatar user={c.owner} small/><span className="whitespace-nowrap text-sm">{c.owner.name.split(' ')[0]}</span></div></TableCell><TableCell><DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={`Ações para ${c.name}`}/>}><Ellipsis size={17}/></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem>Ver detalhes</DropdownMenuItem><DropdownMenuItem>Editar cliente</DropdownMenuItem><DropdownMenuItem>Registrar atividade</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell></TableRow>)}</TableBody></Table></div>
+      {filtered.length===0&&<div className="p-12 text-center"><p className="font-medium">Nenhum cliente encontrado</p><p className="mt-1 text-sm text-[#7a8785]">Tente pesquisar por outro nome ou empresa.</p></div>}
+      <footer className="flex items-center justify-between border-t border-[#e5eae8] px-4 py-3 text-sm text-[#71807d]"><span>Exibindo {filtered.length} de {clients.length} clientes</span><div className="flex items-center gap-1"><Button variant="outline" size="icon-sm" disabled><ChevronLeft size={15}/></Button><Button size="sm" className="bg-[#173f3d]">1</Button><Button variant="outline" size="sm">2</Button><Button variant="outline" size="icon-sm"><ChevronRight size={15}/></Button></div></footer></section></>;
+}
