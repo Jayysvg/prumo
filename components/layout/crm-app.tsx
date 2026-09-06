@@ -67,14 +67,14 @@ export function CRMApp() {
 
 function Logo() {
   return (
-    <div className="flex items-center gap-3">
-      <div className="relative grid size-9 place-items-center rounded-[10px] bg-[var(--brand-lime)] text-[15px] font-black tracking-[-.08em] text-[#12302e]">
-        FD<span className="absolute right-1 top-1 size-1 rounded-full bg-[#12302e]" />
-      </div>
-      <div>
-        <span className="block text-[17px] font-semibold tracking-[-.035em] text-white">FlowDesk</span>
-        <span className="block text-[9px] font-semibold uppercase tracking-[.22em] text-white/35">Sales OS</span>
-      </div>
+    <div className="rounded-[11px] border border-white/10 bg-[#f7faf8] px-3 py-2 shadow-[0_8px_24px_rgba(0,0,0,.14)]">
+      <img
+        src="/prumo-logo-primary.png"
+        alt="Prumo"
+        width={2172}
+        height={724}
+        className="h-8 w-auto max-w-[166px] object-contain"
+      />
     </div>
   );
 }

@@ -9,7 +9,7 @@ export function ThemeToggle() {
     const next = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
     document.documentElement.classList.toggle('dark', next === 'dark');
     document.documentElement.style.colorScheme = next;
-    localStorage.setItem('flowdesk-theme', next);
+    localStorage.setItem('prumo-theme', next);
   };
 
   return (
