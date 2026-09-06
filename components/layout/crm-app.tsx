@@ -1,23 +1,23 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import {
   Bell, ChartNoAxesCombined, CircleUserRound, LayoutDashboard, Menu,
   Plus, Search, Settings, UsersRound,
 } from 'lucide-react';
-import type { Lead, LeadStatus } from '@/types/crm';
-import { initialLeads } from '@/data/leads';
+import type { Lead, LeadStatus, SessionUser } from '@/types/crm';
 import { DashboardPage } from '@/components/dashboard/dashboard-page';
 import { LeadsPage } from '@/components/leads/leads-page';
 import { ClientsPage } from '@/components/clients/clients-page';
 import { ActivitiesPage } from '@/components/activities/activities-page';
 import { NewLeadDialog, type LeadDraft } from '@/components/leads/new-lead-dialog';
+import { LeadDetailSheet } from '@/components/leads/lead-detail-sheet';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { useWebMcpCreateLead } from '@/hooks/use-webmcp';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 type Page = 'Visão geral' | 'Leads' | 'Clientes' | 'Atividades';
 const nav = [
@@ -29,8 +29,13 @@ const nav = [
 
 export function CRMApp() {
   const [page, setPage] = useState<Page>('Visão geral');
-  const [leads, setLeads] = useState(initialLeads);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [globalQuery, setGlobalQuery] = useState('');
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const [session, setSession] = useState<SessionUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState(false);
   const [prefill, setPrefill] = useState<Partial<LeadDraft>>({});
   const startLead = useCallback((input: { name: string; company: string }) => {
@@ -39,12 +44,27 @@ export function CRMApp() {
   }, []);
   useWebMcpCreateLead(startLead);
 
-  const move = (id: string, status: LeadStatus) =>
-    setLeads((current) => current.map((lead) => lead.id === id ? { ...lead, status, lastContact: 'Agora' } : lead));
-  const create = (lead: Lead) => {
-    setLeads((current) => [lead, ...current]);
+  useEffect(() => {
+    Promise.all([fetch('/api/leads'), fetch('/api/session')]).then(async ([leadResponse, sessionResponse]) => {
+      if (!leadResponse.ok || !sessionResponse.ok) throw new Error('Não foi possível carregar seu espaço de trabalho.');
+      const leadData = await leadResponse.json() as { leads: Lead[] };
+      const sessionData = await sessionResponse.json() as SessionUser;
+      setLeads(leadData.leads); setSession(sessionData);
+    }).catch((reason) => setError(reason instanceof Error ? reason.message : 'Não foi possível carregar os dados.')).finally(() => setLoading(false));
+  }, []);
+
+  const move = async (id: string, status: LeadStatus) => {
+    const previous = leads; setError(null); setLeads((current) => current.map((lead) => lead.id === id ? { ...lead, status } : lead));
+    try { const response=await fetch(`/api/leads/${id}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({status})}); const data=await response.json() as {lead?:Lead;error?:string}; if(!response.ok||!data.lead) throw new Error(data.error||'Não foi possível mover o lead.'); setLeads((current)=>current.map((lead)=>lead.id===id?data.lead!:lead)); setNotice('Etapa atualizada e registrada no histórico.'); }
+    catch(reason){ setLeads(previous); setError(reason instanceof Error?reason.message:'Não foi possível mover o lead.'); }
+  };
+  const create = async (draft: LeadDraft) => {
+    setError(null); const response=await fetch('/api/leads',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(draft)}); const data=await response.json() as {lead?:Lead;error?:string}; if(!response.ok||!data.lead) throw new Error(data.error||'Não foi possível criar o lead.');
+    setLeads((current) => [data.lead!, ...current]); setNotice('Lead adicionado ao pipeline.');
     setPage('Leads');
   };
+  const update = async (id: string, draft: Partial<LeadDraft>) => { const response=await fetch(`/api/leads/${id}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(draft)}); const data=await response.json() as {lead?:Lead;error?:string}; if(!response.ok||!data.lead) throw new Error(data.error||'Não foi possível salvar as alterações.'); setLeads((current)=>current.map((lead)=>lead.id===id?data.lead!:lead)); setNotice('Alterações salvas.'); return data.lead; };
+  const archive = async (id: string) => { const response=await fetch(`/api/leads/${id}`,{method:'DELETE'}); const data=await response.json() as {ok?:boolean;error?:string}; if(!response.ok) throw new Error(data.error||'Não foi possível arquivar o lead.'); setLeads((current)=>current.filter((lead)=>lead.id!==id)); setSelectedLeadId(null); setNotice('Lead arquivado.'); };
   const openNew = () => {
     setPrefill({});
     setModal(true);
@@ -52,17 +72,19 @@ export function CRMApp() {
 
   return (
     <main className="app-canvas min-h-screen lg:grid lg:grid-cols-[248px_1fr]">
-      <DesktopSidebar page={page} leadCount={leads.length} onNavigate={setPage} />
+      <DesktopSidebar page={page} leadCount={leads.length} session={session} onNavigate={setPage} />
       <section className="min-w-0">
         <AppHeader page={page} leadCount={leads.length} globalQuery={globalQuery} onQueryChange={setGlobalQuery} onNavigate={setPage} onNew={openNew} />
         <div className="mx-auto max-w-[1540px] p-4 sm:p-6 lg:p-8 xl:px-10">
-          {page === 'Visão geral' && <DashboardPage />}
-          {page === 'Leads' && <LeadsPage leads={leads} onMove={move} initialQuery={globalQuery} />}
+          {(error || notice) && <div aria-live="polite" className={`mb-4 flex items-center justify-between border px-4 py-3 text-sm ${error?'border-red-300/50 bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-200':'border-[var(--line)] bg-[var(--brand-lime-soft)] text-[var(--text-strong)]'}`}><span>{error || notice}</span><button onClick={()=>{setError(null);setNotice(null)}} aria-label="Fechar mensagem">×</button></div>}
+          {page === 'Visão geral' && <DashboardPage leads={leads} loading={loading} />}
+          {page === 'Leads' && <LeadsPage leads={leads} onMove={move} onOpen={setSelectedLeadId} initialQuery={globalQuery} loading={loading} />}
           {page === 'Clientes' && <ClientsPage />}
           {page === 'Atividades' && <ActivitiesPage />}
         </div>
       </section>
       <NewLeadDialog open={modal} onOpenChange={setModal} onCreate={create} initialDraft={prefill} />
+      <LeadDetailSheet leadId={selectedLeadId} onOpenChange={(open)=>!open&&setSelectedLeadId(null)} onUpdate={update} onArchive={archive} />
     </main>
   );
 }
@@ -99,33 +121,30 @@ function NavItems({ page, leadCount, onNavigate }: { page: Page; leadCount: numb
   );
 }
 
-function UserCard() {
+function UserCard({ session }: { session: SessionUser | null }) {
   return (
     <div className="mt-auto">
       <div className="mb-4 border-l-2 border-[var(--brand-lime)] bg-[var(--surface-soft)] p-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-[var(--text-soft)]">Meta de setembro</p>
-          <span className="text-xs font-semibold text-[var(--success)]">74%</span>
-        </div>
-        <div className="mt-3 h-1 overflow-hidden bg-[var(--surface-subtle)]"><div className="h-full w-[74%] bg-[var(--brand-lime)]" /></div>
-        <div className="mt-2 flex justify-between text-xs"><span className="text-[var(--text-soft)]">R$ 38.750</span><span className="font-medium text-[var(--text-strong)]">de R$ 52 mil</span></div>
+        <p className="text-xs text-[var(--text-faint)]">Espaço atual</p>
+        <p className="mt-1 truncate text-sm font-semibold text-[var(--text-strong)]">{session?.workspaceName || 'Prumo'}</p>
       </div>
       <button className="mb-2 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm text-[var(--text-soft)] transition hover:bg-[var(--surface-soft)] hover:text-[var(--text-strong)]"><Settings size={17} />Configurações</button>
       <div className="flex items-center gap-3 border-t border-[var(--line)] px-1 pt-4">
         <div className="grid size-9 place-items-center rounded-[10px] bg-[#d8a3ff] text-xs font-bold text-[#362047]">JM</div>
-        <div className="min-w-0"><p className="truncate text-sm font-medium text-[var(--text-strong)]">João Martins</p><p className="text-xs text-[var(--text-faint)]">Administrador</p></div>
+        <div className="min-w-0"><p className="truncate text-sm font-medium text-[var(--text-strong)]">{session?.name || 'Carregando...'}</p><p className="truncate text-xs text-[var(--text-faint)]">{session?.role === 'member' ? 'Membro' : 'Administrador'}</p></div>
         <span className="ml-auto text-[var(--text-faint)]">•••</span>
       </div>
+      <form action="/signout-with-chatgpt" method="get" target="_top" className="mt-3 px-1"><input type="hidden" name="return_to" value="/"/><button type="submit" className="text-xs text-[var(--text-faint)] hover:text-[var(--text-strong)]">Encerrar sessão</button></form>
     </div>
   );
 }
 
-function SidebarBody({ page, leadCount, onNavigate }: { page: Page; leadCount: number; onNavigate: (page: Page) => void }) {
-  return <><Logo /><NavItems page={page} leadCount={leadCount} onNavigate={onNavigate} /><UserCard /></>;
+function SidebarBody({ page, leadCount, session, onNavigate }: { page: Page; leadCount: number; session: SessionUser | null; onNavigate: (page: Page) => void }) {
+  return <><Logo /><NavItems page={page} leadCount={leadCount} onNavigate={onNavigate} /><UserCard session={session} /></>;
 }
 
-function DesktopSidebar({ page, leadCount, onNavigate }: { page: Page; leadCount: number; onNavigate: (page: Page) => void }) {
-  return <aside className="sticky top-0 hidden h-screen flex-col border-r border-[var(--line)] bg-[var(--surface-raised)] px-4 py-6 lg:flex"><SidebarBody page={page} leadCount={leadCount} onNavigate={onNavigate} /></aside>;
+function DesktopSidebar({ page, leadCount, session, onNavigate }: { page: Page; leadCount: number; session: SessionUser | null; onNavigate: (page: Page) => void }) {
+  return <aside className="sticky top-0 hidden h-screen flex-col border-r border-[var(--line)] bg-[var(--surface-raised)] px-4 py-6 lg:flex"><SidebarBody page={page} leadCount={leadCount} session={session} onNavigate={onNavigate} /></aside>;
 }
 
 function MobileNav({ page, leadCount, onNavigate }: { page: Page; leadCount: number; onNavigate: (page: Page) => void }) {
@@ -135,7 +154,7 @@ function MobileNav({ page, leadCount, onNavigate }: { page: Page; leadCount: num
       <SheetTrigger render={<Button variant="outline" size="icon" className="control-button lg:hidden" />}><Menu size={18} /></SheetTrigger>
       <SheetContent side="left" className="flex w-[286px] flex-col border-r border-[var(--line)] bg-[var(--surface-raised)] p-5">
         <SheetTitle className="sr-only">Menu principal</SheetTitle>
-        <SidebarBody page={page} leadCount={leadCount} onNavigate={(next) => { onNavigate(next); setOpen(false); }} />
+        <SidebarBody page={page} leadCount={leadCount} session={null} onNavigate={(next) => { onNavigate(next); setOpen(false); }} />
       </SheetContent>
     </Sheet>
   );
@@ -160,8 +179,8 @@ function AppHeader({ page, leadCount, globalQuery, onQueryChange, onNavigate, on
         </form>
         <ThemeToggle />
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="outline" size="icon" className="control-button relative" aria-label="Notificações" />}><Bell size={16} /><span className="absolute right-2 top-2 size-1.5 rounded-full bg-[#d87a52] ring-2 ring-[var(--surface-raised)]" /></DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-72"><DropdownMenuLabel>Pendências de hoje</DropdownMenuLabel><DropdownMenuSeparator/><DropdownMenuItem onClick={() => onNavigate('Leads')}>Proposta da Grupo Lumina vence hoje</DropdownMenuItem><DropdownMenuItem onClick={() => onNavigate('Leads')}>Mobi Parts está há 2 dias sem retorno</DropdownMenuItem><DropdownMenuItem onClick={() => onNavigate('Atividades')}>Reunião com Atlas Tech às 15h</DropdownMenuItem></DropdownMenuContent>
+          <DropdownMenuTrigger render={<Button variant="outline" size="icon" className="control-button" aria-label="Notificações" />}><Bell size={16} /></DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-72"><DropdownMenuLabel>Notificações</DropdownMenuLabel><DropdownMenuSeparator/><p className="px-3 py-4 text-sm text-[var(--text-soft)]">Nenhuma notificação nova.</p></DropdownMenuContent>
         </DropdownMenu>
         <Button onClick={onNew} className="h-9 rounded-md bg-[var(--brand-deep)] px-3 text-sm font-semibold text-white shadow-none hover:opacity-90 dark:text-[#13231f] sm:px-4">
           <Plus size={16} /><span className="hidden sm:inline">Novo lead</span>
