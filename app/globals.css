@@ -70,7 +70,7 @@
   --chart-3: oklch(0.69 0.12 78);
   --chart-4: oklch(0.6 0.1 295);
   --chart-5: oklch(0.56 0.09 235);
-  --radius: 0.65rem;
+  --radius: 0.45rem;
   --sidebar: oklch(0.205 0.034 183);
   --sidebar-foreground: oklch(0.96 0.006 175);
   --sidebar-primary: oklch(0.82 0.18 118);
@@ -92,7 +92,7 @@
   --brand-lime: #c8f35a;
   --brand-lime-soft: #edf8d2;
   --success: #397761;
-  --shadow-card: 0 1px 1px rgba(12,41,39,.03), 0 8px 24px rgba(12,41,39,.035);
+  --shadow-card: 0 1px 2px rgba(12,41,39,.035), 0 5px 16px rgba(12,41,39,.025);
 }
 
 .dark {
@@ -135,7 +135,7 @@
   --brand-lime: #c8f35a;
   --brand-lime-soft: #29371f;
   --success: #79c7a9;
-  --shadow-card: 0 1px 0 rgba(255,255,255,.025), 0 14px 32px rgba(0,0,0,.14);
+  --shadow-card: 0 1px 0 rgba(255,255,255,.025), 0 8px 20px rgba(0,0,0,.12);
 }
 
 @layer base {
@@ -147,9 +147,9 @@
 
 @layer components {
   .app-canvas { background-color: var(--background); color: var(--text-strong); }
-  .card-surface { border: 1px solid var(--line); border-radius: .9rem; background: var(--surface-raised); box-shadow: var(--shadow-card); }
+  .card-surface { border: 1px solid var(--line); border-radius: .6rem; background: var(--surface-raised); box-shadow: var(--shadow-card); }
   .subtle-panel { border: 1px solid var(--line-soft); background: var(--surface-soft); }
-  .control-button { border-color: var(--line); background: var(--surface-raised); color: var(--text-soft); border-radius: .7rem; }
+  .control-button { border-color: var(--line); background: var(--surface-raised); color: var(--text-soft); border-radius: .5rem; }
   .control-button:hover { background: var(--surface-soft); color: var(--text-strong); }
   .premium-input { border-color: var(--line); background: var(--surface-soft); color: var(--text-strong); }
   .premium-input::placeholder { color: var(--text-faint); }
@@ -157,6 +157,11 @@
   .text-faint { color: var(--text-faint); }
   .premium-rule { border-color: var(--line-soft); }
 }
+
+.prumo-guide { position: relative; }
+.prumo-guide::before { content: ''; position: absolute; inset-block: 0; left: 0; width: 2px; background: var(--brand-lime); }
+.brand-lockup { background: transparent; }
+.dark .brand-lockup { background: #f7faf8; }
 
 .kanban-scroll { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 ::selection { background: rgba(200,243,90,.35); color: var(--text-strong); }

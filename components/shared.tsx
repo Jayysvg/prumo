@@ -7,5 +7,5 @@ export function PersonAvatar({ user, small = false }: { user: User; small?: bool
 }
 
 export function SectionTitle({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) {
-  return <div className="mb-7 flex flex-wrap items-end justify-between gap-4"><div><div className="mb-2 flex items-center gap-2"><span className="size-1.5 rounded-full bg-[var(--brand-lime)] ring-4 ring-[var(--brand-lime-soft)]"/><span className="text-[10px] font-semibold uppercase tracking-[.16em] text-[var(--text-faint)]">Workspace comercial</span></div><h2 className="text-[28px] font-semibold leading-tight tracking-[-.045em] text-[var(--text-strong)] sm:text-[30px]">{title}</h2><p className="mt-1.5 text-sm text-[var(--text-soft)]">{description}</p></div>{action}</div>;
+  return <div className="mb-7 flex flex-wrap items-end justify-between gap-4"><div className="prumo-guide pl-4"><h2 className="text-[28px] font-semibold leading-tight tracking-[-.04em] text-[var(--text-strong)] sm:text-[30px]">{title}</h2><p className="mt-1.5 text-[15px] text-[var(--text-soft)]">{description}</p></div>{action}</div>;
 }
