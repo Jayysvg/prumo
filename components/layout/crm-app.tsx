@@ -1,12 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import {
-  Bell, ChartNoAxesCombined, CircleUserRound, LayoutDashboard, Menu,
-  Plus, Search, Settings, UsersRound,
+  Bell, ChartNoAxesCombined, CircleUserRound, Info, LayoutDashboard, Menu,
+  Plus, RotateCcw, Search, Settings, UsersRound,
 } from 'lucide-react';
-import type { Activity, Lead, LeadStatus, SessionUser } from '@/types/crm';
+import type { Activity, Lead, LeadHistory, LeadStatus, SessionUser } from '@/types/crm';
 import { DashboardPage } from '@/components/dashboard/dashboard-page';
 import { LeadsPage } from '@/components/leads/leads-page';
 import { ClientsPage } from '@/components/clients/clients-page';
@@ -15,27 +15,32 @@ import { ActivityDialog, type ActivityDraft } from '@/components/activities/acti
 import { NewLeadDialog, type LeadDraft } from '@/components/leads/new-lead-dialog';
 import { LeadDetailSheet } from '@/components/leads/lead-detail-sheet';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
-import { useWebMcpCreateLead } from '@/hooks/use-webmcp';
+import { createDemoData, DEMO_STORAGE_KEY } from '@/data/demo-data';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
 
-type Page = 'Visão geral' | 'Leads' | 'Clientes' | 'Atividades';
+type Page = 'Visão geral' | 'Leads' | 'Clientes' | 'Atividades' | 'Sobre';
 const nav = [
   { name: 'Visão geral' as Page, icon: LayoutDashboard },
   { name: 'Leads' as Page, icon: ChartNoAxesCombined },
   { name: 'Clientes' as Page, icon: UsersRound },
   { name: 'Atividades' as Page, icon: CircleUserRound },
+  { name: 'Sobre' as Page, icon: Info },
 ];
+
+const demoSession: SessionUser = { name: 'Marina Costa', email: 'demo@prumo.exemplo', role: 'admin', workspaceName: 'Demonstração Prumo' };
+const makeId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
 
 export function CRMApp() {
   const [page, setPage] = useState<Page>('Visão geral');
   const [leads, setLeads] = useState<Lead[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [history, setHistory] = useState<Record<string, LeadHistory[]>>({});
   const [globalQuery, setGlobalQuery] = useState('');
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
-  const [session, setSession] = useState<SessionUser | null>(null);
+  const [session] = useState<SessionUser>(demoSession);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,60 +50,57 @@ export function CRMApp() {
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [activityLeadId, setActivityLeadId] = useState<string | null>(null);
   const [prefill, setPrefill] = useState<Partial<LeadDraft>>({});
-  const startLead = useCallback((input: { name: string; company: string }) => {
-    setPrefill(input);
-    setModal(true);
-  }, []);
-  useWebMcpCreateLead(startLead);
-
   useEffect(() => {
-    Promise.all([fetch('/api/leads'), fetch('/api/activities'), fetch('/api/session')]).then(async ([leadResponse, activityResponse, sessionResponse]) => {
-      if (!leadResponse.ok || !activityResponse.ok || !sessionResponse.ok) throw new Error('Não foi possível carregar seu espaço de trabalho.');
-      const leadData = await leadResponse.json() as { leads: Lead[] };
-      const activityData = await activityResponse.json() as { activities: Activity[] };
-      const sessionData = await sessionResponse.json() as SessionUser;
-      setLeads(leadData.leads); setActivities(activityData.activities); setSession(sessionData);
-    }).catch((reason) => setError(reason instanceof Error ? reason.message : 'Não foi possível carregar os dados.')).finally(() => setLoading(false));
+    try {
+      const saved = localStorage.getItem(DEMO_STORAGE_KEY);
+      const data = saved ? JSON.parse(saved) as ReturnType<typeof createDemoData> : createDemoData();
+      setLeads(data.leads); setActivities(data.activities); setHistory(data.history);
+    } catch { const data=createDemoData(); setLeads(data.leads); setActivities(data.activities); setHistory(data.history); }
+    finally { setLoading(false); }
   }, []);
+
+  useEffect(() => { if (!loading) localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({leads,activities,history})); }, [leads,activities,history,loading]);
 
   const move = async (id: string, status: LeadStatus) => {
-    const previous = leads; setError(null); setLeads((current) => current.map((lead) => lead.id === id ? { ...lead, status } : lead));
-    try { const response=await fetch(`/api/leads/${id}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({status})}); const data=await response.json() as {lead?:Lead;error?:string}; if(!response.ok||!data.lead) throw new Error(data.error||'Não foi possível mover o lead.'); setLeads((current)=>current.map((lead)=>lead.id===id?data.lead!:lead)); setNotice('Etapa atualizada e registrada no histórico.'); }
-    catch(reason){ setLeads(previous); setError(reason instanceof Error?reason.message:'Não foi possível mover o lead.'); }
+    const currentLead=leads.find((lead)=>lead.id===id); if(!currentLead||currentLead.status===status)return;
+    setLeads((current) => current.map((lead) => lead.id === id ? { ...lead, status, updatedAt:new Date().toISOString(), lastContact:'Agora' } : lead));
+    setHistory((current)=>({...current,[id]:[{id:makeId('history'),type:'stage_changed',previousStage:currentLead.status,newStage:status,description:`Etapa alterada para ${status}.`,createdAt:new Date().toISOString(),authorName:demoSession.name},...(current[id]||[])]}));
+    setNotice('Etapa atualizada nesta demonstração.');
   };
   const create = async (draft: LeadDraft) => {
-    setError(null); const response=await fetch('/api/leads',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(draft)}); const data=await response.json() as {lead?:Lead;error?:string}; if(!response.ok||!data.lead) throw new Error(data.error||'Não foi possível criar o lead.');
-    setLeads((current) => [data.lead!, ...current]); setNotice('Lead adicionado ao pipeline.');
+    const now=new Date().toISOString(); const id=makeId('lead'); const lead:Lead={id,name:draft.name.trim(),company:draft.company.trim(),email:draft.email.trim(),phone:draft.phone.trim(),value:Number(draft.value)||0,lastContact:'Agora',owner:{id:'demo-user',name:'Marina Costa',initials:'MC',color:'#d8a3ff'},status:draft.status,tags:draft.source?[draft.source]:[],source:draft.source,notes:draft.notes,nextActionAt:draft.nextActionAt?new Date(draft.nextActionAt).toISOString():null,createdAt:now,updatedAt:now};
+    setLeads((current) => [lead, ...current]); setHistory((current)=>({...current,[id]:[{id:makeId('history'),type:'created',previousStage:null,newStage:draft.status,description:'Lead adicionado ao pipeline.',createdAt:now,authorName:demoSession.name}]})); setNotice('Lead adicionado à demonstração.');
     setPage('Leads');
   };
-  const update = async (id: string, draft: Partial<LeadDraft>) => { const response=await fetch(`/api/leads/${id}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(draft)}); const data=await response.json() as {lead?:Lead;error?:string}; if(!response.ok||!data.lead) throw new Error(data.error||'Não foi possível salvar as alterações.'); setLeads((current)=>current.map((lead)=>lead.id===id?data.lead!:lead)); setNotice('Alterações salvas.'); return data.lead; };
-  const archive = async (id: string) => { const response=await fetch(`/api/leads/${id}`,{method:'DELETE'}); const data=await response.json() as {ok?:boolean;error?:string}; if(!response.ok) throw new Error(data.error||'Não foi possível arquivar o lead.'); setLeads((current)=>current.filter((lead)=>lead.id!==id)); setSelectedLeadId(null); setNotice('Lead arquivado.'); };
+  const update = async (id: string, draft: Partial<LeadDraft>) => { let updated:Lead|undefined; setLeads((current)=>current.map((lead)=>{if(lead.id!==id)return lead; updated={...lead,...draft,value:draft.value===undefined?lead.value:Number(draft.value)||0,nextActionAt:draft.nextActionAt===undefined?lead.nextActionAt:(draft.nextActionAt?new Date(draft.nextActionAt).toISOString():null),updatedAt:new Date().toISOString(),lastContact:'Agora'} as Lead;return updated;})); if(!updated)throw new Error('Lead não encontrado.'); setHistory((current)=>({...current,[id]:[{id:makeId('history'),type:'updated',previousStage:null,newStage:null,description:'Dados do lead atualizados.',createdAt:new Date().toISOString(),authorName:demoSession.name},...(current[id]||[])]})); setNotice('Alterações salvas na demonstração.'); return updated; };
+  const archive = async (id: string) => { setLeads((current)=>current.filter((lead)=>lead.id!==id)); setActivities((current)=>current.filter((activity)=>activity.leadId!==id)); setSelectedLeadId(null); setNotice('Lead removido da demonstração.'); };
   const openNew = () => {
     setPrefill({});
     setModal(true);
   };
-  const refreshLeads = async () => { const response=await fetch('/api/leads'); if(response.ok){const data=await response.json() as {leads:Lead[]};setLeads(data.leads);} };
   const openNewActivity = (leadId?:string) => { setEditingActivity(null); setActivityLeadId(leadId||null); setActivityModal(true); };
   const openEditActivity = (activity:Activity) => { setEditingActivity(activity); setActivityLeadId(activity.leadId); setActivityModal(true); };
-  const saveActivity = async (draft:ActivityDraft,id?:string) => { const response=await fetch(id?`/api/activities/${id}`:'/api/activities',{method:id?'PATCH':'POST',headers:{'content-type':'application/json'},body:JSON.stringify(draft)});const data=await response.json() as {activity?:Activity;error?:string};if(!response.ok||!data.activity)throw new Error(data.error||'Não foi possível salvar a atividade.');setActivities((current)=>id?current.map((item)=>item.id===id?data.activity!:item):[data.activity!,...current]);await refreshLeads();setNotice(id?'Atividade atualizada.':'Atividade criada e adicionada à agenda.'); };
+  const saveActivity = async (draft:ActivityDraft,id?:string) => { const lead=leads.find((item)=>item.id===draft.leadId);if(!lead)throw new Error('Selecione um lead válido.');const now=new Date().toISOString();const activity:Activity={id:id||makeId('activity'),leadId:lead.id,leadName:lead.name,leadCompany:lead.company,type:draft.type,title:draft.title,description:draft.description,scheduledAt:draft.scheduledAt,status:draft.status,completedAt:draft.status==='completed'?now:null,createdAt:now,updatedAt:now};setActivities((current)=>id?current.map((item)=>item.id===id?{...activity,createdAt:item.createdAt}:item):[activity,...current]);setLeads((current)=>current.map((item)=>item.id===lead.id?{...item,nextActionAt:draft.status==='pending'?draft.scheduledAt:item.nextActionAt,updatedAt:now}:item));setNotice(id?'Atividade atualizada.':'Atividade criada na demonstração.'); };
   const toggleActivity = async (activity:Activity) => { await saveActivity({leadId:activity.leadId,type:activity.type,title:activity.title,description:activity.description,scheduledAt:activity.scheduledAt,status:activity.status==='pending'?'completed':'pending'},activity.id); };
-  const deleteActivity = async (id:string) => { const response=await fetch(`/api/activities/${id}`,{method:'DELETE'});const data=await response.json() as {ok?:boolean;error?:string};if(!response.ok)throw new Error(data.error||'Não foi possível excluir a atividade.');setActivities((current)=>current.filter((item)=>item.id!==id));await refreshLeads();setNotice('Atividade excluída.'); };
+  const deleteActivity = async (id:string) => { setActivities((current)=>current.filter((item)=>item.id!==id));setNotice('Atividade excluída da demonstração.'); };
+  const resetDemo = () => { const data=createDemoData();setLeads(data.leads);setActivities(data.activities);setHistory(data.history);setPage('Visão geral');setSelectedLeadId(null);setNotice('Demonstração restaurada com os dados originais.'); };
 
   return (
     <main className="app-canvas min-h-screen lg:grid lg:grid-cols-[248px_1fr]">
-      <DesktopSidebar page={page} leadCount={leads.length} session={session} onNavigate={setPage} onSettings={() => setSettingsOpen(true)} />
+      <DesktopSidebar page={page} leadCount={leads.length} session={session} onNavigate={setPage} onSettings={() => setSettingsOpen(true)} onReset={resetDemo} />
       <section className="min-w-0">
-        <AppHeader page={page} leadCount={leads.length} activities={activities} globalQuery={globalQuery} onQueryChange={setGlobalQuery} onNavigate={setPage} onNew={openNew} onSettings={() => setSettingsOpen(true)} onOpenLead={setSelectedLeadId} />
+        <AppHeader page={page} leadCount={leads.length} activities={activities} globalQuery={globalQuery} onQueryChange={setGlobalQuery} onNavigate={setPage} onNew={openNew} onSettings={() => setSettingsOpen(true)} onReset={resetDemo} onOpenLead={setSelectedLeadId} />
         <div className="mx-auto max-w-[1540px] p-4 sm:p-6 lg:p-8 xl:px-10">
           {(error || notice) && <div aria-live="polite" className={`mb-4 flex items-center justify-between border px-4 py-3 text-sm ${error?'border-red-300/50 bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-200':'border-[var(--line)] bg-[var(--brand-lime-soft)] text-[var(--text-strong)]'}`}><span>{error || notice}</span><button onClick={()=>{setError(null);setNotice(null)}} aria-label="Fechar mensagem">×</button></div>}
           {page === 'Visão geral' && <DashboardPage leads={leads} loading={loading} />}
           {page === 'Leads' && <LeadsPage leads={leads} onMove={move} onOpen={setSelectedLeadId} initialQuery={globalQuery} loading={loading} />}
-          {page === 'Clientes' && <ClientsPage />}
+          {page === 'Clientes' && <ClientsPage leads={leads} />}
           {page === 'Atividades' && <ActivitiesPage activities={activities} leads={leads} loading={loading} onNew={()=>openNewActivity()} onEdit={openEditActivity} onToggle={toggleActivity} onDelete={deleteActivity} onOpenLead={setSelectedLeadId} />}
+          {page === 'Sobre' && <AboutPage />}
         </div>
       </section>
       <NewLeadDialog open={modal} onOpenChange={setModal} onCreate={create} initialDraft={prefill} />
-      <LeadDetailSheet leadId={selectedLeadId} nextActionAt={leads.find((lead)=>lead.id===selectedLeadId)?.nextActionAt} activities={activities.filter((activity)=>activity.leadId===selectedLeadId)} onOpenChange={(open)=>!open&&setSelectedLeadId(null)} onUpdate={update} onArchive={archive} onNewActivity={()=>selectedLeadId&&openNewActivity(selectedLeadId)} onEditActivity={openEditActivity} onToggleActivity={toggleActivity} onDeleteActivity={deleteActivity} />
+      <LeadDetailSheet leadId={selectedLeadId} initialLead={leads.find((lead)=>lead.id===selectedLeadId)} initialHistory={selectedLeadId?history[selectedLeadId]:[]} demo nextActionAt={leads.find((lead)=>lead.id===selectedLeadId)?.nextActionAt} activities={activities.filter((activity)=>activity.leadId===selectedLeadId)} onOpenChange={(open)=>!open&&setSelectedLeadId(null)} onUpdate={update} onArchive={archive} onNewActivity={()=>selectedLeadId&&openNewActivity(selectedLeadId)} onEditActivity={openEditActivity} onToggleActivity={toggleActivity} onDeleteActivity={deleteActivity} />
       <ActivityDialog open={activityModal} onOpenChange={setActivityModal} leads={leads} activity={editingActivity} initialLeadId={activityLeadId} onSave={saveActivity} />
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} session={session} />
     </main>
@@ -137,7 +139,7 @@ function NavItems({ page, leadCount, onNavigate }: { page: Page; leadCount: numb
   );
 }
 
-function UserCard({ session, onSettings }: { session: SessionUser | null; onSettings: () => void }) {
+function UserCard({ session, onSettings, onReset }: { session: SessionUser | null; onSettings: () => void; onReset: () => void }) {
   return (
     <div className="mt-auto">
       <div className="mb-4 border-l-2 border-[var(--brand-lime)] bg-[var(--surface-soft)] p-3">
@@ -145,43 +147,44 @@ function UserCard({ session, onSettings }: { session: SessionUser | null; onSett
         <p className="mt-1 truncate text-sm font-semibold text-[var(--text-strong)]">{session?.workspaceName || 'Prumo'}</p>
       </div>
       <button onClick={onSettings} className="mb-2 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm text-[var(--text-soft)] transition hover:bg-[var(--surface-soft)] hover:text-[var(--text-strong)]"><Settings size={17} />Configurações</button>
+      <button onClick={onReset} className="mb-3 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm text-[var(--text-soft)] transition hover:bg-[var(--surface-soft)] hover:text-[var(--text-strong)]"><RotateCcw size={17} />Restaurar demonstração</button>
       <div className="flex items-center gap-3 border-t border-[var(--line)] px-1 pt-4">
         <div className="grid size-9 place-items-center rounded-[10px] bg-[#d8a3ff] text-xs font-bold text-[#362047]">JM</div>
         <div className="min-w-0"><p className="truncate text-sm font-medium text-[var(--text-strong)]">{session?.name || 'Carregando...'}</p><p className="truncate text-xs text-[var(--text-faint)]">{session?.role === 'member' ? 'Membro' : 'Administrador'}</p></div>
         <span className="ml-auto text-[var(--text-faint)]">•••</span>
       </div>
-      <form action="/signout-with-chatgpt" method="get" target="_top" className="mt-3 px-1"><input type="hidden" name="return_to" value="/"/><button type="submit" className="text-xs text-[var(--text-faint)] hover:text-[var(--text-strong)]">Encerrar sessão</button></form>
+      <p className="mt-3 px-1 text-xs leading-relaxed text-[var(--text-faint)]">Ambiente público com dados fictícios salvos somente neste navegador.</p>
     </div>
   );
 }
 
-function SidebarBody({ page, leadCount, session, onNavigate, onSettings }: { page: Page; leadCount: number; session: SessionUser | null; onNavigate: (page: Page) => void; onSettings: () => void }) {
-  return <><Logo /><NavItems page={page} leadCount={leadCount} onNavigate={onNavigate} /><UserCard session={session} onSettings={onSettings} /></>;
+function SidebarBody({ page, leadCount, session, onNavigate, onSettings, onReset }: { page: Page; leadCount: number; session: SessionUser | null; onNavigate: (page: Page) => void; onSettings: () => void; onReset: () => void }) {
+  return <><div className="flex items-center justify-between gap-2"><Logo /><span className="rounded-full border border-[var(--line)] bg-[var(--brand-lime-soft)] px-2 py-1 text-[9px] font-bold uppercase tracking-[.12em] text-[var(--success)]">Demo</span></div><NavItems page={page} leadCount={leadCount} onNavigate={onNavigate} /><UserCard session={session} onSettings={onSettings} onReset={onReset} /></>;
 }
 
-function DesktopSidebar({ page, leadCount, session, onNavigate, onSettings }: { page: Page; leadCount: number; session: SessionUser | null; onNavigate: (page: Page) => void; onSettings: () => void }) {
-  return <aside className="sticky top-0 hidden h-screen flex-col border-r border-[var(--line)] bg-[var(--surface-raised)] px-4 py-6 lg:flex"><SidebarBody page={page} leadCount={leadCount} session={session} onNavigate={onNavigate} onSettings={onSettings} /></aside>;
+function DesktopSidebar({ page, leadCount, session, onNavigate, onSettings, onReset }: { page: Page; leadCount: number; session: SessionUser | null; onNavigate: (page: Page) => void; onSettings: () => void; onReset: () => void }) {
+  return <aside className="sticky top-0 hidden h-screen flex-col border-r border-[var(--line)] bg-[var(--surface-raised)] px-4 py-6 lg:flex"><SidebarBody page={page} leadCount={leadCount} session={session} onNavigate={onNavigate} onSettings={onSettings} onReset={onReset} /></aside>;
 }
 
-function MobileNav({ page, leadCount, onNavigate, onSettings }: { page: Page; leadCount: number; onNavigate: (page: Page) => void; onSettings: () => void }) {
+function MobileNav({ page, leadCount, onNavigate, onSettings, onReset }: { page: Page; leadCount: number; onNavigate: (page: Page) => void; onSettings: () => void; onReset: () => void }) {
   const [open, setOpen] = useState(false);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger render={<Button variant="outline" size="icon" className="control-button lg:hidden" />}><Menu size={18} /></SheetTrigger>
       <SheetContent side="left" className="flex w-[286px] flex-col border-r border-[var(--line)] bg-[var(--surface-raised)] p-5">
         <SheetTitle className="sr-only">Menu principal</SheetTitle>
-        <SidebarBody page={page} leadCount={leadCount} session={null} onNavigate={(next) => { onNavigate(next); setOpen(false); }} onSettings={() => { setOpen(false); onSettings(); }} />
+        <SidebarBody page={page} leadCount={leadCount} session={demoSession} onNavigate={(next) => { onNavigate(next); setOpen(false); }} onSettings={() => { setOpen(false); onSettings(); }} onReset={() => { onReset(); setOpen(false); }} />
       </SheetContent>
     </Sheet>
   );
 }
 
-function AppHeader({ page, leadCount, activities, globalQuery, onQueryChange, onNavigate, onNew, onSettings, onOpenLead }: { page: Page; leadCount: number; activities:Activity[]; globalQuery: string; onQueryChange: (query: string) => void; onNavigate: (page: Page) => void; onNew: () => void; onSettings: () => void; onOpenLead:(id:string)=>void }) {
+function AppHeader({ page, leadCount, activities, globalQuery, onQueryChange, onNavigate, onNew, onSettings, onReset, onOpenLead }: { page: Page; leadCount: number; activities:Activity[]; globalQuery: string; onQueryChange: (query: string) => void; onNavigate: (page: Page) => void; onNew: () => void; onSettings: () => void; onReset: () => void; onOpenLead:(id:string)=>void }) {
   const [now]=useState(()=>Date.now());const nextDay=now+86400000;const notifications=activities.filter((activity)=>activity.status==='pending'&&new Date(activity.scheduledAt).getTime()<=nextDay).sort((a,b)=>a.scheduledAt.localeCompare(b.scheduledAt));
   return (
     <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-[var(--line)] bg-[color:var(--surface-raised)]/92 px-4 backdrop-blur-xl sm:px-6 lg:px-8 xl:px-10">
       <div className="flex items-center gap-3">
-        <MobileNav page={page} leadCount={leadCount} onNavigate={onNavigate} onSettings={onSettings} />
+        <MobileNav page={page} leadCount={leadCount} onNavigate={onNavigate} onSettings={onSettings} onReset={onReset} />
         <div className="flex items-center gap-2 text-sm">
           <span className="hidden text-[var(--text-faint)] sm:inline">Prumo</span>
           <span className="hidden text-[var(--line)] sm:inline">/</span>
@@ -241,3 +244,9 @@ function SettingsDialog({ open, onOpenChange, session }: { open: boolean; onOpen
     </Dialog>
   );
 }
+
+function AboutPage() {
+  return <div className="mx-auto max-w-4xl"><header className="prumo-guide mb-7 pl-4"><p className="text-sm font-medium text-[var(--success)]">Projeto de portfólio</p><h2 className="mt-2 text-3xl font-semibold tracking-[-.04em] text-[var(--text-strong)] sm:text-4xl">Um CRM direto ao ponto para conduzir oportunidades.</h2><p className="mt-4 max-w-2xl text-base leading-relaxed text-[var(--text-soft)]">O Prumo transforma contatos dispersos em um pipeline visual, com contexto, agenda e indicadores comerciais em um só lugar.</p></header><div className="grid gap-4 md:grid-cols-3"><AboutCard title="Pipeline visual" text="Organize oportunidades por etapa e mova cada lead conforme a negociação avança."/><AboutCard title="Agenda integrada" text="Crie ligações, reuniões, emails e tarefas vinculadas ao contato certo."/><AboutCard title="Visão gerencial" text="Acompanhe valor em aberto, conversão, prioridades e negócios conquistados."/></div><section className="card-surface mt-4 p-6 sm:p-8"><h3 className="text-lg font-semibold text-[var(--text-strong)]">Sobre esta demonstração</h3><p className="mt-3 leading-relaxed text-[var(--text-soft)]">Todos os nomes, empresas, emails e valores exibidos aqui são fictícios. As alterações ficam apenas no seu navegador e podem ser desfeitas a qualquer momento em <strong className="text-[var(--text-strong)]">Restaurar demonstração</strong>.</p><p className="mt-3 text-sm text-[var(--text-faint)]">Construído com TypeScript, React, Vinext, Tailwind CSS e componentes acessíveis.</p></section></div>;
+}
+
+function AboutCard({title,text}:{title:string;text:string}){return <article className="card-surface p-5 sm:p-6"><div className="mb-4 h-1 w-10 bg-[var(--brand-lime)]"/><h3 className="font-semibold text-[var(--text-strong)]">{title}</h3><p className="mt-2 text-sm leading-relaxed text-[var(--text-soft)]">{text}</p></article>}

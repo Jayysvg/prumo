@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Prumo — CRM Comercial',
-  description: 'Gestão de leads, clientes e oportunidades comerciais.',
+  title: 'Prumo — Demonstração do CRM',
+  description: 'Conheça o Prumo em uma demonstração interativa com dados fictícios.',
 };
 
 export default function RootLayout({
