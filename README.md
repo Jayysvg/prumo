@@ -8,7 +8,7 @@ Prumo é um CRM comercial pensado para pequenas equipes acompanharem oportunidad
 
 A versão pública utiliza somente dados fictícios e salva alterações no próprio navegador. Ela permite explorar o produto sem cadastro e pode ser restaurada ao estado inicial a qualquer momento.
 
-**Acessar demonstração:** https://prumo-crm-demo.asxxrobo.chatgpt.site
+**Acessar demonstração:** https://jayysvg.github.io/prumo/
 
 ## Funcionalidades
 
