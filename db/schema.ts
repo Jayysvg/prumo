@@ -54,3 +54,21 @@ export const leadHistory = sqliteTable('lead_history', {
   index('idx_lead_history_lead_created').on(table.leadId, table.createdAt),
   index('idx_lead_history_workspace').on(table.workspaceId),
 ]);
+
+export const activities = sqliteTable('activities', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id),
+  leadId: text('lead_id').notNull().references(() => leads.id),
+  createdByMemberId: text('created_by_member_id').references(() => workspaceMembers.id),
+  type: text('type', { enum: ['Ligação', 'Reunião', 'Email', 'Tarefa'] }).notNull(),
+  title: text('title').notNull(),
+  description: text('description'),
+  scheduledAt: text('scheduled_at').notNull(),
+  status: text('status', { enum: ['pending', 'completed'] }).notNull().default('pending'),
+  completedAt: text('completed_at'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (table) => [
+  index('idx_activities_workspace_status_scheduled').on(table.workspaceId, table.status, table.scheduledAt),
+  index('idx_activities_lead_scheduled').on(table.leadId, table.scheduledAt),
+]);

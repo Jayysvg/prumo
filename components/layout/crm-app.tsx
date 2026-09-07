@@ -6,11 +6,12 @@ import {
   Bell, ChartNoAxesCombined, CircleUserRound, LayoutDashboard, Menu,
   Plus, Search, Settings, UsersRound,
 } from 'lucide-react';
-import type { Lead, LeadStatus, SessionUser } from '@/types/crm';
+import type { Activity, Lead, LeadStatus, SessionUser } from '@/types/crm';
 import { DashboardPage } from '@/components/dashboard/dashboard-page';
 import { LeadsPage } from '@/components/leads/leads-page';
 import { ClientsPage } from '@/components/clients/clients-page';
 import { ActivitiesPage } from '@/components/activities/activities-page';
+import { ActivityDialog, type ActivityDraft } from '@/components/activities/activity-dialog';
 import { NewLeadDialog, type LeadDraft } from '@/components/leads/new-lead-dialog';
 import { LeadDetailSheet } from '@/components/leads/lead-detail-sheet';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
@@ -31,6 +32,7 @@ const nav = [
 export function CRMApp() {
   const [page, setPage] = useState<Page>('Visão geral');
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [globalQuery, setGlobalQuery] = useState('');
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [session, setSession] = useState<SessionUser | null>(null);
@@ -39,6 +41,9 @@ export function CRMApp() {
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activityModal, setActivityModal] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+  const [activityLeadId, setActivityLeadId] = useState<string | null>(null);
   const [prefill, setPrefill] = useState<Partial<LeadDraft>>({});
   const startLead = useCallback((input: { name: string; company: string }) => {
     setPrefill(input);
@@ -47,11 +52,12 @@ export function CRMApp() {
   useWebMcpCreateLead(startLead);
 
   useEffect(() => {
-    Promise.all([fetch('/api/leads'), fetch('/api/session')]).then(async ([leadResponse, sessionResponse]) => {
-      if (!leadResponse.ok || !sessionResponse.ok) throw new Error('Não foi possível carregar seu espaço de trabalho.');
+    Promise.all([fetch('/api/leads'), fetch('/api/activities'), fetch('/api/session')]).then(async ([leadResponse, activityResponse, sessionResponse]) => {
+      if (!leadResponse.ok || !activityResponse.ok || !sessionResponse.ok) throw new Error('Não foi possível carregar seu espaço de trabalho.');
       const leadData = await leadResponse.json() as { leads: Lead[] };
+      const activityData = await activityResponse.json() as { activities: Activity[] };
       const sessionData = await sessionResponse.json() as SessionUser;
-      setLeads(leadData.leads); setSession(sessionData);
+      setLeads(leadData.leads); setActivities(activityData.activities); setSession(sessionData);
     }).catch((reason) => setError(reason instanceof Error ? reason.message : 'Não foi possível carregar os dados.')).finally(() => setLoading(false));
   }, []);
 
@@ -71,22 +77,29 @@ export function CRMApp() {
     setPrefill({});
     setModal(true);
   };
+  const refreshLeads = async () => { const response=await fetch('/api/leads'); if(response.ok){const data=await response.json() as {leads:Lead[]};setLeads(data.leads);} };
+  const openNewActivity = (leadId?:string) => { setEditingActivity(null); setActivityLeadId(leadId||null); setActivityModal(true); };
+  const openEditActivity = (activity:Activity) => { setEditingActivity(activity); setActivityLeadId(activity.leadId); setActivityModal(true); };
+  const saveActivity = async (draft:ActivityDraft,id?:string) => { const response=await fetch(id?`/api/activities/${id}`:'/api/activities',{method:id?'PATCH':'POST',headers:{'content-type':'application/json'},body:JSON.stringify(draft)});const data=await response.json() as {activity?:Activity;error?:string};if(!response.ok||!data.activity)throw new Error(data.error||'Não foi possível salvar a atividade.');setActivities((current)=>id?current.map((item)=>item.id===id?data.activity!:item):[data.activity!,...current]);await refreshLeads();setNotice(id?'Atividade atualizada.':'Atividade criada e adicionada à agenda.'); };
+  const toggleActivity = async (activity:Activity) => { await saveActivity({leadId:activity.leadId,type:activity.type,title:activity.title,description:activity.description,scheduledAt:activity.scheduledAt,status:activity.status==='pending'?'completed':'pending'},activity.id); };
+  const deleteActivity = async (id:string) => { const response=await fetch(`/api/activities/${id}`,{method:'DELETE'});const data=await response.json() as {ok?:boolean;error?:string};if(!response.ok)throw new Error(data.error||'Não foi possível excluir a atividade.');setActivities((current)=>current.filter((item)=>item.id!==id));await refreshLeads();setNotice('Atividade excluída.'); };
 
   return (
     <main className="app-canvas min-h-screen lg:grid lg:grid-cols-[248px_1fr]">
       <DesktopSidebar page={page} leadCount={leads.length} session={session} onNavigate={setPage} onSettings={() => setSettingsOpen(true)} />
       <section className="min-w-0">
-        <AppHeader page={page} leadCount={leads.length} globalQuery={globalQuery} onQueryChange={setGlobalQuery} onNavigate={setPage} onNew={openNew} onSettings={() => setSettingsOpen(true)} />
+        <AppHeader page={page} leadCount={leads.length} activities={activities} globalQuery={globalQuery} onQueryChange={setGlobalQuery} onNavigate={setPage} onNew={openNew} onSettings={() => setSettingsOpen(true)} onOpenLead={setSelectedLeadId} />
         <div className="mx-auto max-w-[1540px] p-4 sm:p-6 lg:p-8 xl:px-10">
           {(error || notice) && <div aria-live="polite" className={`mb-4 flex items-center justify-between border px-4 py-3 text-sm ${error?'border-red-300/50 bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-200':'border-[var(--line)] bg-[var(--brand-lime-soft)] text-[var(--text-strong)]'}`}><span>{error || notice}</span><button onClick={()=>{setError(null);setNotice(null)}} aria-label="Fechar mensagem">×</button></div>}
           {page === 'Visão geral' && <DashboardPage leads={leads} loading={loading} />}
           {page === 'Leads' && <LeadsPage leads={leads} onMove={move} onOpen={setSelectedLeadId} initialQuery={globalQuery} loading={loading} />}
           {page === 'Clientes' && <ClientsPage />}
-          {page === 'Atividades' && <ActivitiesPage />}
+          {page === 'Atividades' && <ActivitiesPage activities={activities} leads={leads} loading={loading} onNew={()=>openNewActivity()} onEdit={openEditActivity} onToggle={toggleActivity} onDelete={deleteActivity} onOpenLead={setSelectedLeadId} />}
         </div>
       </section>
       <NewLeadDialog open={modal} onOpenChange={setModal} onCreate={create} initialDraft={prefill} />
-      <LeadDetailSheet leadId={selectedLeadId} onOpenChange={(open)=>!open&&setSelectedLeadId(null)} onUpdate={update} onArchive={archive} />
+      <LeadDetailSheet leadId={selectedLeadId} nextActionAt={leads.find((lead)=>lead.id===selectedLeadId)?.nextActionAt} activities={activities.filter((activity)=>activity.leadId===selectedLeadId)} onOpenChange={(open)=>!open&&setSelectedLeadId(null)} onUpdate={update} onArchive={archive} onNewActivity={()=>selectedLeadId&&openNewActivity(selectedLeadId)} onEditActivity={openEditActivity} onToggleActivity={toggleActivity} onDeleteActivity={deleteActivity} />
+      <ActivityDialog open={activityModal} onOpenChange={setActivityModal} leads={leads} activity={editingActivity} initialLeadId={activityLeadId} onSave={saveActivity} />
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} session={session} />
     </main>
   );
@@ -163,7 +176,8 @@ function MobileNav({ page, leadCount, onNavigate, onSettings }: { page: Page; le
   );
 }
 
-function AppHeader({ page, leadCount, globalQuery, onQueryChange, onNavigate, onNew, onSettings }: { page: Page; leadCount: number; globalQuery: string; onQueryChange: (query: string) => void; onNavigate: (page: Page) => void; onNew: () => void; onSettings: () => void }) {
+function AppHeader({ page, leadCount, activities, globalQuery, onQueryChange, onNavigate, onNew, onSettings, onOpenLead }: { page: Page; leadCount: number; activities:Activity[]; globalQuery: string; onQueryChange: (query: string) => void; onNavigate: (page: Page) => void; onNew: () => void; onSettings: () => void; onOpenLead:(id:string)=>void }) {
+  const [now]=useState(()=>Date.now());const nextDay=now+86400000;const notifications=activities.filter((activity)=>activity.status==='pending'&&new Date(activity.scheduledAt).getTime()<=nextDay).sort((a,b)=>a.scheduledAt.localeCompare(b.scheduledAt));
   return (
     <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-[var(--line)] bg-[color:var(--surface-raised)]/92 px-4 backdrop-blur-xl sm:px-6 lg:px-8 xl:px-10">
       <div className="flex items-center gap-3">
@@ -182,11 +196,11 @@ function AppHeader({ page, leadCount, globalQuery, onQueryChange, onNavigate, on
         </form>
         <ThemeToggle />
         <Popover>
-          <PopoverTrigger render={<Button variant="outline" size="icon" className="control-button" aria-label="Notificações" />}><Bell size={16} /></PopoverTrigger>
-          <PopoverContent align="end" className="w-72 border border-[var(--line)] bg-[var(--surface-raised)] p-4">
+          <PopoverTrigger render={<Button variant="outline" size="icon" className="control-button relative" aria-label={`Notificações${notifications.length?` (${notifications.length} pendentes)`:''}`} />}><Bell size={16} />{notifications.length>0&&<span className="absolute right-1 top-1 size-2 rounded-full bg-red-500 ring-2 ring-[var(--surface-raised)]"/>}</PopoverTrigger>
+          <PopoverContent align="end" className="w-80 border border-[var(--line)] bg-[var(--surface-raised)] p-0">
             <PopoverHeader>
-              <PopoverTitle className="text-[var(--text-strong)]">Notificações</PopoverTitle>
-              <PopoverDescription className="text-[var(--text-soft)]">Nenhuma notificação nova.</PopoverDescription>
+              <div className="border-b border-[var(--line-soft)] px-4 py-3"><PopoverTitle className="text-[var(--text-strong)]">Notificações</PopoverTitle><PopoverDescription className="text-[var(--text-soft)]">Acompanhamentos para as próximas 24 horas.</PopoverDescription></div>
+              {notifications.length===0?<p className="px-4 py-5 text-sm text-[var(--text-soft)]">Nenhuma notificação nova.</p>:<div className="max-h-80 divide-y divide-[var(--line-soft)] overflow-y-auto">{notifications.map((activity)=>{const overdue=new Date(activity.scheduledAt).getTime()<now;return <button key={activity.id} onClick={()=>onOpenLead(activity.leadId)} className="block w-full px-4 py-3 text-left hover:bg-[var(--surface-soft)]"><span className="block text-sm font-semibold text-[var(--text-strong)]">{activity.title}</span><span className="mt-1 block text-xs text-[var(--text-soft)]">{activity.leadName} · {overdue?'Atrasada':new Date(activity.scheduledAt).toLocaleString('pt-BR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</span></button>})}</div>}
             </PopoverHeader>
           </PopoverContent>
         </Popover>
