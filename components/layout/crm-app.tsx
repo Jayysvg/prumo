@@ -17,7 +17,8 @@ import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { useWebMcpCreateLead } from '@/hooks/use-webmcp';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
 
 type Page = 'Visão geral' | 'Leads' | 'Clientes' | 'Atividades';
 const nav = [
@@ -37,6 +38,7 @@ export function CRMApp() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [prefill, setPrefill] = useState<Partial<LeadDraft>>({});
   const startLead = useCallback((input: { name: string; company: string }) => {
     setPrefill(input);
@@ -72,9 +74,9 @@ export function CRMApp() {
 
   return (
     <main className="app-canvas min-h-screen lg:grid lg:grid-cols-[248px_1fr]">
-      <DesktopSidebar page={page} leadCount={leads.length} session={session} onNavigate={setPage} />
+      <DesktopSidebar page={page} leadCount={leads.length} session={session} onNavigate={setPage} onSettings={() => setSettingsOpen(true)} />
       <section className="min-w-0">
-        <AppHeader page={page} leadCount={leads.length} globalQuery={globalQuery} onQueryChange={setGlobalQuery} onNavigate={setPage} onNew={openNew} />
+        <AppHeader page={page} leadCount={leads.length} globalQuery={globalQuery} onQueryChange={setGlobalQuery} onNavigate={setPage} onNew={openNew} onSettings={() => setSettingsOpen(true)} />
         <div className="mx-auto max-w-[1540px] p-4 sm:p-6 lg:p-8 xl:px-10">
           {(error || notice) && <div aria-live="polite" className={`mb-4 flex items-center justify-between border px-4 py-3 text-sm ${error?'border-red-300/50 bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-200':'border-[var(--line)] bg-[var(--brand-lime-soft)] text-[var(--text-strong)]'}`}><span>{error || notice}</span><button onClick={()=>{setError(null);setNotice(null)}} aria-label="Fechar mensagem">×</button></div>}
           {page === 'Visão geral' && <DashboardPage leads={leads} loading={loading} />}
@@ -85,6 +87,7 @@ export function CRMApp() {
       </section>
       <NewLeadDialog open={modal} onOpenChange={setModal} onCreate={create} initialDraft={prefill} />
       <LeadDetailSheet leadId={selectedLeadId} onOpenChange={(open)=>!open&&setSelectedLeadId(null)} onUpdate={update} onArchive={archive} />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} session={session} />
     </main>
   );
 }
@@ -121,14 +124,14 @@ function NavItems({ page, leadCount, onNavigate }: { page: Page; leadCount: numb
   );
 }
 
-function UserCard({ session }: { session: SessionUser | null }) {
+function UserCard({ session, onSettings }: { session: SessionUser | null; onSettings: () => void }) {
   return (
     <div className="mt-auto">
       <div className="mb-4 border-l-2 border-[var(--brand-lime)] bg-[var(--surface-soft)] p-3">
         <p className="text-xs text-[var(--text-faint)]">Espaço atual</p>
         <p className="mt-1 truncate text-sm font-semibold text-[var(--text-strong)]">{session?.workspaceName || 'Prumo'}</p>
       </div>
-      <button className="mb-2 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm text-[var(--text-soft)] transition hover:bg-[var(--surface-soft)] hover:text-[var(--text-strong)]"><Settings size={17} />Configurações</button>
+      <button onClick={onSettings} className="mb-2 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm text-[var(--text-soft)] transition hover:bg-[var(--surface-soft)] hover:text-[var(--text-strong)]"><Settings size={17} />Configurações</button>
       <div className="flex items-center gap-3 border-t border-[var(--line)] px-1 pt-4">
         <div className="grid size-9 place-items-center rounded-[10px] bg-[#d8a3ff] text-xs font-bold text-[#362047]">JM</div>
         <div className="min-w-0"><p className="truncate text-sm font-medium text-[var(--text-strong)]">{session?.name || 'Carregando...'}</p><p className="truncate text-xs text-[var(--text-faint)]">{session?.role === 'member' ? 'Membro' : 'Administrador'}</p></div>
@@ -139,32 +142,32 @@ function UserCard({ session }: { session: SessionUser | null }) {
   );
 }
 
-function SidebarBody({ page, leadCount, session, onNavigate }: { page: Page; leadCount: number; session: SessionUser | null; onNavigate: (page: Page) => void }) {
-  return <><Logo /><NavItems page={page} leadCount={leadCount} onNavigate={onNavigate} /><UserCard session={session} /></>;
+function SidebarBody({ page, leadCount, session, onNavigate, onSettings }: { page: Page; leadCount: number; session: SessionUser | null; onNavigate: (page: Page) => void; onSettings: () => void }) {
+  return <><Logo /><NavItems page={page} leadCount={leadCount} onNavigate={onNavigate} /><UserCard session={session} onSettings={onSettings} /></>;
 }
 
-function DesktopSidebar({ page, leadCount, session, onNavigate }: { page: Page; leadCount: number; session: SessionUser | null; onNavigate: (page: Page) => void }) {
-  return <aside className="sticky top-0 hidden h-screen flex-col border-r border-[var(--line)] bg-[var(--surface-raised)] px-4 py-6 lg:flex"><SidebarBody page={page} leadCount={leadCount} session={session} onNavigate={onNavigate} /></aside>;
+function DesktopSidebar({ page, leadCount, session, onNavigate, onSettings }: { page: Page; leadCount: number; session: SessionUser | null; onNavigate: (page: Page) => void; onSettings: () => void }) {
+  return <aside className="sticky top-0 hidden h-screen flex-col border-r border-[var(--line)] bg-[var(--surface-raised)] px-4 py-6 lg:flex"><SidebarBody page={page} leadCount={leadCount} session={session} onNavigate={onNavigate} onSettings={onSettings} /></aside>;
 }
 
-function MobileNav({ page, leadCount, onNavigate }: { page: Page; leadCount: number; onNavigate: (page: Page) => void }) {
+function MobileNav({ page, leadCount, onNavigate, onSettings }: { page: Page; leadCount: number; onNavigate: (page: Page) => void; onSettings: () => void }) {
   const [open, setOpen] = useState(false);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger render={<Button variant="outline" size="icon" className="control-button lg:hidden" />}><Menu size={18} /></SheetTrigger>
       <SheetContent side="left" className="flex w-[286px] flex-col border-r border-[var(--line)] bg-[var(--surface-raised)] p-5">
         <SheetTitle className="sr-only">Menu principal</SheetTitle>
-        <SidebarBody page={page} leadCount={leadCount} session={null} onNavigate={(next) => { onNavigate(next); setOpen(false); }} />
+        <SidebarBody page={page} leadCount={leadCount} session={null} onNavigate={(next) => { onNavigate(next); setOpen(false); }} onSettings={() => { setOpen(false); onSettings(); }} />
       </SheetContent>
     </Sheet>
   );
 }
 
-function AppHeader({ page, leadCount, globalQuery, onQueryChange, onNavigate, onNew }: { page: Page; leadCount: number; globalQuery: string; onQueryChange: (query: string) => void; onNavigate: (page: Page) => void; onNew: () => void }) {
+function AppHeader({ page, leadCount, globalQuery, onQueryChange, onNavigate, onNew, onSettings }: { page: Page; leadCount: number; globalQuery: string; onQueryChange: (query: string) => void; onNavigate: (page: Page) => void; onNew: () => void; onSettings: () => void }) {
   return (
     <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-[var(--line)] bg-[color:var(--surface-raised)]/92 px-4 backdrop-blur-xl sm:px-6 lg:px-8 xl:px-10">
       <div className="flex items-center gap-3">
-        <MobileNav page={page} leadCount={leadCount} onNavigate={onNavigate} />
+        <MobileNav page={page} leadCount={leadCount} onNavigate={onNavigate} onSettings={onSettings} />
         <div className="flex items-center gap-2 text-sm">
           <span className="hidden text-[var(--text-faint)] sm:inline">Prumo</span>
           <span className="hidden text-[var(--line)] sm:inline">/</span>
@@ -178,14 +181,49 @@ function AppHeader({ page, leadCount, globalQuery, onQueryChange, onNavigate, on
           <kbd className="rounded border border-[var(--line)] bg-[var(--surface-raised)] px-1.5 py-0.5 text-xs text-[var(--text-faint)]">↵</kbd>
         </form>
         <ThemeToggle />
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="outline" size="icon" className="control-button" aria-label="Notificações" />}><Bell size={16} /></DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-72"><DropdownMenuLabel>Notificações</DropdownMenuLabel><DropdownMenuSeparator/><p className="px-3 py-4 text-sm text-[var(--text-soft)]">Nenhuma notificação nova.</p></DropdownMenuContent>
-        </DropdownMenu>
+        <Popover>
+          <PopoverTrigger render={<Button variant="outline" size="icon" className="control-button" aria-label="Notificações" />}><Bell size={16} /></PopoverTrigger>
+          <PopoverContent align="end" className="w-72 border border-[var(--line)] bg-[var(--surface-raised)] p-4">
+            <PopoverHeader>
+              <PopoverTitle className="text-[var(--text-strong)]">Notificações</PopoverTitle>
+              <PopoverDescription className="text-[var(--text-soft)]">Nenhuma notificação nova.</PopoverDescription>
+            </PopoverHeader>
+          </PopoverContent>
+        </Popover>
         <Button onClick={onNew} className="h-9 rounded-md bg-[var(--brand-deep)] px-3 text-sm font-semibold text-white shadow-none hover:opacity-90 dark:text-[#13231f] sm:px-4">
           <Plus size={16} /><span className="hidden sm:inline">Novo lead</span>
         </Button>
       </div>
     </header>
+  );
+}
+
+function SettingsDialog({ open, onOpenChange, session }: { open: boolean; onOpenChange: (open: boolean) => void; session: SessionUser | null }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md border border-[var(--line)] bg-[var(--surface-raised)] p-6">
+        <DialogHeader>
+          <DialogTitle className="text-xl text-[var(--text-strong)]">Configurações</DialogTitle>
+          <DialogDescription className="text-[var(--text-soft)]">Preferências do seu espaço no Prumo.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-5 pt-2">
+          <section className="flex items-center justify-between gap-4 border-b border-[var(--line)] pb-5">
+            <div>
+              <h3 className="text-sm font-semibold text-[var(--text-strong)]">Aparência</h3>
+              <p className="mt-1 text-sm text-[var(--text-soft)]">Alterne entre os modos claro e escuro.</p>
+            </div>
+            <ThemeToggle />
+          </section>
+          <section>
+            <h3 className="text-sm font-semibold text-[var(--text-strong)]">Seu espaço</h3>
+            <dl className="mt-3 grid gap-3 rounded-lg bg-[var(--surface-soft)] p-4 text-sm">
+              <div className="flex items-center justify-between gap-4"><dt className="text-[var(--text-faint)]">Nome</dt><dd className="truncate font-medium text-[var(--text-strong)]">{session?.workspaceName || 'Prumo'}</dd></div>
+              <div className="flex items-center justify-between gap-4"><dt className="text-[var(--text-faint)]">Usuário</dt><dd className="truncate font-medium text-[var(--text-strong)]">{session?.name || 'Carregando...'}</dd></div>
+              <div className="flex items-center justify-between gap-4"><dt className="text-[var(--text-faint)]">Perfil</dt><dd className="font-medium text-[var(--text-strong)]">{session?.role === 'member' ? 'Membro' : 'Administrador'}</dd></div>
+            </dl>
+          </section>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
