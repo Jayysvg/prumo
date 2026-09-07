@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
 import {
   Bell, ChartNoAxesCombined, CircleUserRound, Info, LayoutDashboard, Menu,
   Plus, RotateCcw, Search, Settings, UsersRound,
@@ -110,11 +109,11 @@ export function CRMApp() {
 function Logo() {
   return (
     <div className="brand-lockup w-fit rounded-md px-1 py-1 dark:px-2 dark:py-1.5">
-      <Image
-        src="/prumo-logo-primary.png"
+      <img
+        src={`${import.meta.env.BASE_URL || '/'}prumo-logo-primary.png`}
         alt="Prumo"
-        width={2172}
-        height={724}
+        width="2172"
+        height="724"
         className="h-8 w-auto max-w-[154px] object-contain"
       />
     </div>

@@ -50,6 +50,18 @@ Para verificar uma compilação de produção:
 npm run build
 ```
 
+### GitHub Pages
+
+A demonstração possui uma compilação estática independente, sem backend e sem dados reais:
+
+```bash
+npm run build:pages
+```
+
+O resultado é gerado em `dist-pages`. O workflow `.github/workflows/deploy-pages.yml` publica essa pasta automaticamente quando houver um push na branch `main`.
+
+Depois de enviar o projeto ao GitHub, abra **Settings → Pages** no repositório e selecione **GitHub Actions** em **Source**.
+
 ## Decisões de produto
 
 - O pipeline é o centro da experiência e mantém as etapas sempre visíveis.
